@@ -17,7 +17,7 @@
 ###########################################################################
 package Nagios::Cmd;
 use vars qw( $AUTOLOAD $debug %commands );
-use Fcntl qw( :flock SEEK_END );
+use Fcntl qw( :flock SEEK_END O_WRONLY );
 use Symbol;
 use Carp;
 $debug = undef;
@@ -70,9 +70,13 @@ sub nagios_cmd {
     chomp( $cmd ); 
 
     my $fh = gensym;
-    open( $fh, ">>$$self" )
-        || croak "could not open $$self for writing: $!";
+    # cannot open in append mode, since that causes a seek
+    sysopen( $fh, $$self, O_WRONLY )
+        || croak "could not sysopen $$self for writing: $!";
+    
     flock $fh, LOCK_EX;
+    # only seek to end of file on regular files
+    seek( $fh, 0, SEEK_END ) if ( -f $$self );
     print $fh "$cmd\n";
     flock $fh, LOCK_UN;
     close $fh;
@@ -80,13 +84,8 @@ sub nagios_cmd {
     
 sub new {
     my( $type, $cmdfile ) = @_;
-
-    croak "$cmdfile does not exist!"
-        unless ( -e $cmdfile );
-    
-    croak "$cmdfile is not a pipe and debugging is not enabled!"
-        unless ( -p $cmdfile );
-
+    croak "$cmdfile does not exist!" unless ( -e $cmdfile );
+    croak "$cmdfile is not a pipe!"  unless ( -p $cmdfile );
     return bless \$cmdfile, $type;
 }
 
@@ -103,7 +102,7 @@ sub service_check {
 
 # host return_code plugin_output
 sub host_check {
-    shift->nagios_cmd( "[".time()."] PROCESS_HOST_CHECK_RESULT;".join(";", @_) );
+    shift->nagios_cmd( "[".time()."] ". join(";", process_args('PROCESS_HOST_CHECK_RESULT',@_)) );
 }
 
 sub DESTROY { 1 }
@@ -166,6 +165,15 @@ sub process_args {
 	    else {
             splice( @command, @command, 0, @input );
 	    }
+    }
+
+    # run through and resolve Nagios::Object objects into their textual names
+    # name() is a Nagios::Object specific method for doing polymorphic stuff
+    # like this
+    foreach ( @command ) {
+        if ( ref $_ =~ /^Nagios::/ && $_->can('name') ) {
+            $_ = $_->name;
+        }
     }
 
     unshift( @command, $method );

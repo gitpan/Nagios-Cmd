@@ -2,14 +2,15 @@
 use strict;
 use Test::More;
 use File::Temp qw/ mktemp /;
+use POSIX qw/ mkfifo /;
 use lib qw( ./lib ../lib );
 use vars qw( $fifo %tst );
-BEGIN { plan tests => 87 }
+BEGIN { plan tests => 88 }
 
 %tst = (
     host                   => 'localhost',
     persistent             => 0,
-    author                 => "Al Tobey",
+    author                 => "The Admin",
     comment                => "The sky is falling!",
     comment_id             => 7,
     service                => 'Nagios',
@@ -38,10 +39,38 @@ ok( $devnull->host_check('localhost', 0, 'Up and Running'),
 # try mkfifo first, since FreeBSD and Darwin don't seem to allow creating
 # named pipes with mknod
 $fifo = mktemp( "/var/tmp/NagiosCmdTestXXXXXXXX" );
-if ( system( "mkfifo -m 600 $fifo" ) ) { system( "mknod -m 600 $fifo p" ); }
+# try POSIX::mkfifo first
+my $result = mkfifo( $fifo, 0600 );
+if ( !$result ) {
+    diag( "POSIX::mkfifo failed - attempting system() call" );
+    # try the command mkfifo
+    system( "mkfifo -m 0600 $fifo" );
+    if ( $? == 0 ) {
+        diag( "mkfifo succeeded" );
+        $result = 1;
+    }
+    else {
+        diag( "mkfifo failed - attempting mknod" );
+        # finally, try mknod, which should be able to do it on most systems
+        system( "mknod -m 0600 $fifo p" );
+        if ( $? == 0 ) {
+            diag( "mknod succeeded" );
+        }
+    }
+    if ( -p $fifo ) {
+        $result = 1;
+    }
+    else {
+        diag( "$fifo is not a pipe - some tests will be skipped or will fail" );
+        $result = undef;
+    }
+}
+# weird things seem to be happening with permissions
+# if somebody figures this out, email me <tobeya@NOSPAMcpan.org>
+chmod 0600, $fifo;
 
 SKIP: {
-    skip "could not create fifo for testing", 77 unless -p $fifo;
+    skip "could not create fifo for testing", 77 unless ( $result && -w $fifo );
 
 	eval { # we must always reach the end of the program to unlink the tempfile
 	
@@ -72,7 +101,23 @@ SKIP: {
 } # end of SKIP
 if ( $@ ) { warn $@ }
 
+diag(" ");
+diag( "Test Nagios::Object interoperability, if available" );
 SKIP: {
+    eval "require Nagios::Object;";
+    skip "Nagios::Object not installed", 1 if ( $@ );
+
+    my $devnull = Nagios::Cmd->new_anyfile( '/dev/null' );
+    my $host = Nagios::Host->new( host_name => 'localhost' );
+
+    ok( $devnull->host_check( $host, 0, 'testing Nagios::Host' ),
+        "use a Nagios::Object (Nagios::Host) instead of textual host name" );
+
+    # add Nagios::Object tests here
+}
+
+SKIP: {
+    # may need to make this more intelligent to insure it's actually a file
     skip "cannot write to file", 4 if system( "touch $fifo" );
 
     diag(" ");
@@ -100,10 +145,13 @@ SKIP: {
 
     open( TMPFILE, "<$fifo" );
     1 while ( <TMPFILE> );
-    is( $., 200, "flooding still results in 50 lines of commands" );
+    is( $., 200, "flooding still results in 200 lines of commands" );
     close( TMPFILE );
 
     unlink( $fifo );
 }
+
+
+
 
 exit 0;

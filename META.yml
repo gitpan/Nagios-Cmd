@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Nagios-Cmd
-version: 0.04
+version: 0.05
 license: gpl
 distribution_type: module
 requires:

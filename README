@@ -1,8 +1,8 @@
 Nagios::Cmd
 ------------------
 
-version 0.01
-released 02 October 2003
+version 0.05
+released 02 December 2003
 
 Nagios::Cmd is a Perl module that provides a nice object oriented interface
 for submitting commands to Nagios' (http://www.nagios.org) command pipe.
