@@ -18,7 +18,7 @@
 package Nagios::Cmd;
 use vars qw( $AUTOLOAD $debug %commands );
 use Fcntl qw( :flock SEEK_END );
-use IO::File;
+use Symbol;
 use Carp;
 $debug = undef;
 
@@ -63,12 +63,18 @@ $debug = undef;
 
 sub nagios_cmd {
     my( $self, $cmd ) = @_;
-    chomp( $cmd ); # there can be only one "\n"
-    flock( $self->[1], LOCK_EX );
-    $self->[1]->seek( 0, SEEK_END );
-    my $retval = $self->[1]->syswrite( $cmd, length($cmd) );
-    flock( $self->[1], LOCK_UN );
-    return $retval;
+
+    # there can be only one "\n" and this function is used for passing through
+    # custom commands, too
+    chomp( $cmd ); 
+
+    my $fh = gensym;
+    open( $fh, ">>$$self" )
+        || croak "could not open $$self for writing: $!";
+    flock $fh, LOCK_EX;
+    print $fh "$cmd\n";
+    flock $fh, LOCK_UN;
+    close $fh;
 }
     
 sub new {
@@ -80,12 +86,7 @@ sub new {
     croak "$cmdfile is not a pipe and debugging is not enabled!"
         unless ( -p $cmdfile || defined($debug) );
 
-    print "opening '$cmdfile' to write commands to ...\n" if ( $debug );
-    my $fh = new IO::File;
-    sysopen( $fh, $cmdfile, O_SYNC|O_WRONLY|O_APPEND )
-        || croak "could not open $cmdfile for writing: $!";
-
-    return( bless([$cmdfile, $fh], $type) );
+    return bless \$cmdfile, $type;
 }
 
 sub AUTOLOAD {
@@ -139,12 +140,12 @@ sub AUTOLOAD {
         if ( $debug );
 
     # write to the command pipe
-    $self->nagios_cmd( $time . join(';', @command) . "\n" );
+    $self->nagios_cmd( $time . join(';', @command) );
 }
 
 sub DESTROY {
     print "closing command file ...\n" if ( $debug );
-    $_[0]->[1]->close();
+    eval { close($_[0]->[1]); };
 }
 
 sub Help {
@@ -164,10 +165,6 @@ sub Commands {
     return \%commands;
 }
 
-1;
-
-__END__
-
 =head1 NAME
 
 Nagios::Cmd
@@ -186,7 +183,7 @@ To get a list of valid commands and their arguments, run the following command:
 You might need to specify an include path for Nagios::Cmd since it most likely won't be in your standard perl include directories:
  perl -I/opt/nagios/libexec -MNagios::Cmd -e 'Nagios::Cmd::Help'
 
-=head1 EXAMPLES
+Examples:
 
  use lib '/opt/nagios/libexec';
  use Nagios::Cmd;
@@ -218,7 +215,7 @@ You might need to specify an include path for Nagios::Cmd since it most likely w
  # submit a custom command to the pipe
  $cmd->nagios_cmd( "[$time] DEL_ALL_HOST_COMMENTS;localhost" );
 
-=head1 METHODS
+=head1 PUBLIC METHODS
 
 =over4
 
@@ -231,23 +228,17 @@ command file to be a regular file instead of a pipe.   You can also create a
 test command file with the mknod(1) command.
 
  mknod -m 600 /var/tmp/nagios_cmd p
- -- or on modern systems --
- mkfifo -m 600 /var/tmp/nagios_cmd
 
-The cat(1) command works well as a reader on a fifo, or use Nagios::Cmd::Read
-which is bundled with this module.
+The cat(1) command works well as a reader on a fifo.
 
 =item nagios_cmd()
 
 Use this method if you need to use a command that is not defined in
 this module.  Adding commands to this module is pretty trivial, so you
 may want to look at the %commands hash at the top of the Cmd.pm file.
-Email any additions to <tobeya@tobert.org>.
 
  $cmd->nagios_cmd( "[".time()."] " . join(";", $COMMAND_NAME, @ARGS) );
  $cmd->nagios_cmd( "[1063919882] DISABLE_HOST_SVC_NOTIFICATIONS;localhost" );
-
-=back
 
 =head1 LICENSE
 
@@ -255,7 +246,8 @@ GPL
 
 =head1 AUTHOR
 
-Al Tobey <tobeya@tobert.org>
+Albert P Tobey <albert.tobey@priority-health.com>
 
 =cut
 
+1;

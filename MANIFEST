@@ -4,3 +4,4 @@ lib/Nagios/Cmd.pm
 Build.PL
 MANIFEST
 README
+META.yml

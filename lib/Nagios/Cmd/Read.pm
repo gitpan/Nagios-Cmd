@@ -21,8 +21,16 @@ use Fcntl qw(:flock SEEK_SET);
 use Carp;
 use IO::File;
 require Exporter;
-@ISA   = qw( Exporter Nagios::Cmd );
+@ISA       = qw( Exporter Nagios::Cmd );
 $debug = undef;
+
+##
+## NOTE: the sys* functions are used to better resemble what Nagios actually does
+## and to avoid problems with buffering.  Although seek() is useless when working
+## with fifo's, it is necessary when using a regular file.  This is used for doing
+## testing and debugging.  The seek() does not cause any problems when used on a
+## fifo.
+##
 
 sub new {
     my( $type, $cmdfile ) = @_;
@@ -54,43 +62,12 @@ sub DESTROY {
     $_[0]->[1]->close();
 }
 
-1;
-
-__END__
-
 =head1 NAME
 
-Nagios::Cmd::Read
+Nagios::Cmd
 
 =head1 DESCRIPTION
 
-This module is mostly for testing Nagios::Cmd programs and the module itself.  It makes it
-trivial to set up a consumer of Nagios commands.
-
-Example:
-
- > mkfifo -m 600 /var/tmp/my_test_fifo
- > perl -I./lib -MNagios::Cmd::Read <<EOF
- > my \$reader = Nagios::Cmd::Read->new( "/var/tmp/my_test_fifo" );
- > while (1) { print \$reader->readcmd() }
- > EOF
-
- ... a test to see if it's working before blaming your Nagios::Cmd script
- > echo "[000000000000] FOO_BAR_COMMAND;yes" >>/var/tmp/my_test_fifo
-
- > rm -f /var/tmp/my_test_fifo
-
-=head1 LICENSE
-
-GPL
-
-=head1 AUTHOR
-
-Al Tobey <tobeya@tobert.org>
-
-=head1 WARNINGS
-
-See AUTHOR.
-
 =cut
 
+1;

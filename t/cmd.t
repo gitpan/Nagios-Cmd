@@ -1,7 +1,6 @@
 #!/usr/local/bin/perl -w
 use strict;
 use Test::More;
-use Test::Exception;
 use File::Temp qw/ mktemp /;
 use lib qw( ../lib );
 use vars qw( $fifo %tst );
@@ -56,4 +55,5 @@ eval { # we must always reach the end of the program to unlink the tempfile
     }
 
 }; # end of eval
+if ( $@ ) { warn $@ }
 unlink( $fifo );
