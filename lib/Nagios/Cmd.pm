@@ -217,7 +217,7 @@ Examples:
 
 =head1 PUBLIC METHODS
 
-=over4
+=over 4
 
 =item new()
 
